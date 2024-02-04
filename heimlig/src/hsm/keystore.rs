@@ -164,7 +164,7 @@ pub trait InsecureKeyStore {
     /// Delete the key for given ID.
     ///
     /// return: An error, if the key could not be found.
-    fn delete(&mut self, id: KeyId) -> Result<(), Error>;
+    fn delete_insecure(&mut self, id: KeyId) -> Result<(), Error>;
 
     /// Returns whether or not a key for the given 'id' is present in the store.
     fn is_key_available(&self, id: KeyId) -> bool;
@@ -173,9 +173,7 @@ pub trait InsecureKeyStore {
     fn size(&self, id: KeyId) -> Result<usize, Error>;
 }
 
-pub trait KeyStore {
-    fn get_key_info(&self, id: KeyId) -> Result<KeyInfo, Error>;
-
+pub trait KeyStore: InsecureKeyStore {
     /// Write symmetric key to storage.
     fn import_symmetric_key(
         &mut self,
@@ -191,25 +189,6 @@ pub trait KeyStore {
         public_key: &[u8],
         private_key: &[u8],
         overwrite: bool,
-    ) -> Result<(), Error>;
-
-    /// Write symmetric key to storage.
-    ///
-    /// Unlike `import_symmetric_key()`, this function imports keys even if their permissions do not
-    /// allow to do so. It is supposed to be used by workers and is not reachable from outside
-    /// Heimlig. Workers operate inside Heimlig and are trusted.
-    fn import_symmetric_key_insecure(&mut self, id: KeyId, data: &[u8]) -> Result<(), Error>;
-
-    /// Write asymmetric key pair to storage.
-    ///
-    /// Unlike `import_key_pair()`, this function imports keys even if their permissions do not
-    /// allow to do so. It is supposed to be used by workers and is not reachable from outside
-    /// Heimlig. Workers operate inside Heimlig and are trusted.
-    fn import_key_pair_insecure(
-        &mut self,
-        id: KeyId,
-        public_key: &[u8],
-        private_key: &[u8],
     ) -> Result<(), Error>;
 
     /// Read symmetric key from storage.
@@ -239,51 +218,15 @@ pub trait KeyStore {
         dest: &'data mut [u8],
     ) -> Result<&'data [u8], Error>;
 
-    /// Read symmetric key from storage.
-    ///
-    /// Unlike `export_symmetric_key()`, this function exports keys even if their permissions do not
-    /// allow to do so. It is supposed to be used by workers and is not reachable from outside
-    /// Heimlig. Workers operate inside Heimlig and are trusted.
-    ///
-    /// returns: The number of bytes written to `dest` or and error.
-    fn export_symmetric_key_insecure<'data>(
-        &self,
-        id: KeyId,
-        dest: &'data mut [u8],
-    ) -> Result<&'data [u8], Error>;
-
-    /// Read asymmetric private key from storage.
-    ///
-    /// Unlike `export_private_key()`, this function exports keys even if their permissions do not
-    /// allow to do so. It is supposed to be used by workers and is not reachable from outside
-    /// Heimlig. Workers operate inside Heimlig and are trusted.
-    ///
-    /// returns: The number of bytes written to `dest` or and error.
-    fn export_private_key_insecure<'data>(
-        &self,
-        id: KeyId,
-        dest: &'data mut [u8],
-    ) -> Result<&'data [u8], Error>;
-
     /// Delete the key for given ID.
     ///
     /// return: An error, if the key could not be found.
     fn delete(&mut self, id: KeyId) -> Result<(), Error>;
-
-    /// Returns whether or not a key for the given 'id' is present in the store.
-    fn is_key_available(&self, id: KeyId) -> bool;
-
-    /// Get the size of a key.
-    fn size(&self, id: KeyId) -> Result<usize, Error>;
 }
 
 /// Blanket implementation for `InsecureKeyStore` to be used as `KeyStore`, by applying permission
 /// and key type checks. This is the only way to use `InsecureKeyStore` as `KeyStore`.
 impl<T: InsecureKeyStore> KeyStore for T {
-    fn get_key_info(&self, id: KeyId) -> Result<KeyInfo, Error> {
-        self.get_key_info(id)
-    }
-
     fn import_symmetric_key(
         &mut self,
         id: KeyId,
@@ -325,19 +268,6 @@ impl<T: InsecureKeyStore> KeyStore for T {
             return Err(Error::InvalidKeyType);
         };
 
-        self.import_key_pair_insecure(id, public_key, private_key)
-    }
-
-    fn import_symmetric_key_insecure(&mut self, id: KeyId, data: &[u8]) -> Result<(), Error> {
-        self.import_symmetric_key_insecure(id, data)
-    }
-
-    fn import_key_pair_insecure(
-        &mut self,
-        id: KeyId,
-        public_key: &[u8],
-        private_key: &[u8],
-    ) -> Result<(), Error> {
         self.import_key_pair_insecure(id, public_key, private_key)
     }
 
@@ -383,35 +313,11 @@ impl<T: InsecureKeyStore> KeyStore for T {
         self.export_private_key_insecure(id, dest)
     }
 
-    fn export_symmetric_key_insecure<'data>(
-        &self,
-        id: KeyId,
-        dest: &'data mut [u8],
-    ) -> Result<&'data [u8], Error> {
-        self.export_symmetric_key_insecure(id, dest)
-    }
-
-    fn export_private_key_insecure<'data>(
-        &self,
-        id: KeyId,
-        dest: &'data mut [u8],
-    ) -> Result<&'data [u8], Error> {
-        self.export_private_key_insecure(id, dest)
-    }
-
     fn delete(&mut self, id: KeyId) -> Result<(), Error> {
         let key_info = self.get_key_info(id)?;
         if !key_info.permissions.delete {
             return Err(Error::NotAllowed);
         }
-        self.delete(id)
-    }
-
-    fn is_key_available(&self, id: KeyId) -> bool {
-        self.is_key_available(id)
-    }
-
-    fn size(&self, id: KeyId) -> Result<usize, Error> {
-        self.size(id)
+        self.delete_insecure(id)
     }
 }
